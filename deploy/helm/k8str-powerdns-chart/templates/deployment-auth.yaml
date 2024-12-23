@@ -1,0 +1,145 @@
+{{ if .Values.pdns.authorative.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8str-powerdns-chart.fullname" . }}
+  labels:
+    {{- include "k8str-powerdns-chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "k8str-powerdns-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "k8str-powerdns-chart.labels" . | nindent 8 }}
+	{{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "k8str-powerdns-chart.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{ if .Values.pdns.database.init.enabled -}}
+      initContainers:
+        - env:
+            - name: FLYWAY_BASELINE_ON_MIGRATE
+              value: {{ .Values.pdns.database.init.baseline | quote }}
+            - name: FLYWAY_DBHOST
+              value: {{ .Values.pdns.database.host }}
+            - name: FLYWAY_DBNAME
+              value: {{ .Values.pdns.database.db }}
+            - name: FLYWAY_USER
+              value: {{ .Values.pdns.database.user }}
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.pdns.database.secretKey }}
+                  name: {{ .Values.pdns.database.existingSecret | default (printf "%s-db" (include "k8str-powerdns-chart.fullname" .)) }}
+          image: "{{ .Values.pdns.database.init.image.repository }}:{{ .Values.pdns.database.init.image.tag }}"
+          imagePullPolicy: {{ .Values.pdns.database.init.image.pullPolicy }}
+          name: init-powerdns-db
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            #sysctls:
+            #- name: "net.ipv4.ip_unprivileged_port_start"
+            #  value: "0"
+            capabilities:
+              #drop:
+              #- "ALL"
+              add:
+              - "NET_BIND_SERVICE"
+              - "NET_RAW"
+            # readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 953
+          image: "{{ .Values.image.authorative.repository }}:{{ .Values.image.authorative.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          {{ if .Values.service.web.enabled -}}
+          - name: PDNS_webserver
+            value: "yes"
+          - name: PDNS_webserver_address
+            value: {{ .Values.service.web.listenAddress }}
+          - name: PDNS_webserver_allow_from
+            value: {{ .Values.service.web.allowFrom }}
+          {{ if .Values.service.web.api.enabled -}}  
+          - name: PDNS_api
+            value: "yes"
+          - name: PDNS_api_key
+            valueFrom:
+              secretKeyRef:
+                key: {{ .Values.service.web.api.secretKey }}
+                name: {{ .Values.service.web.api.existingSecret | default (printf "%s-api" (include "k8str-powerdns-chart.fullname" .)) }} 
+          {{- end }}              
+          {{- end }}  
+
+          ports:
+            - name: dns-udp
+              containerPort: 8053
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 8053
+              protocol: TCP
+            {{ if .Values.service.web.enabled -}}
+            - name: http
+              containerPort: {{ .Values.service.web.port }}
+              protocol: TCP
+            {{- end }}
+          livenessProbe:
+            exec:
+              command:
+              - pdns_control
+              - rping  
+          startupProbe:
+            exec:
+              command:
+              - pdns_control
+              - rping
+            failureThreshold: 12
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+              - pdns_control
+              - rping
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+       - name: pdns-config
+         configMap:
+          name: authorative-pdns-conf-cm
+       - name: pdns-data
+         
+      # - name: foo
+      #   secret:
+      #     secretName: mysecret
+      #     optional: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
