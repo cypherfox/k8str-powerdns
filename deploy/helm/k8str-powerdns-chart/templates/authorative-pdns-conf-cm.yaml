@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: autorative-pdns-conf-cm
+  name: authorative-pdns-conf-cm
 data:
   pdns.conf: |
     local-address=0.0.0.0,::
@@ -9,4 +9,4 @@ data:
     launch=gsqlite3
     gsqlite3-dnssec
     gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
-    include-dir=/etc/powerdns/pdns.d  
+    #include-dir=/etc/powerdns/pdns.d  

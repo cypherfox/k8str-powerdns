@@ -94,7 +94,7 @@ spec:
               protocol: TCP
             {{ if .Values.service.web.enabled -}}
             - name: http
-              containerPort: {{ .Values.service.web.port }}
+              containerPort: 8080
               protocol: TCP
             {{- end }}
           livenessProbe:
@@ -116,8 +116,10 @@ spec:
               - rping
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
           volumeMounts:
+          - name: pdns-config
+            mountPath: /etc/powerdns
+          {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
@@ -125,6 +127,10 @@ spec:
          configMap:
           name: authorative-pdns-conf-cm
        - name: pdns-data
+       {{- with .Values.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+       {{- end }}
+
          
       # - name: foo
       #   secret:
